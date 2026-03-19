@@ -123,9 +123,11 @@ $transcript
             return ""
 
         lines = ["## 发言人", ""]
-        for i, speaker in enumerate(speakers):
-            name = speaker.get("name", f"Speaker {i + 1}")
-            lines.append(f"- **{name}**")
+        for speaker in speakers:
+            speaker_label = speaker.get("speaker", "")
+            if not speaker_label:
+                speaker_label = f"Speaker {len(lines) - 2}"
+            lines.append(f"- **{speaker_label}**")
         return "\n".join(lines)
 
     def _format_transcript(
@@ -144,18 +146,16 @@ $transcript
     ) -> str:
         """格式化带时间戳的转录文本"""
         lines = []
-        speaker_map = {s["id"]: s["name"] for s in (speakers or [])}
 
         for segment in result.segments:
             start = segment.get("start", 0)
             text = segment.get("text", "").strip()
-            speaker_id = segment.get("speaker", "")
+            speaker = segment.get("speaker", "")
 
             timestamp = self._format_timestamp(start)
-            speaker_name = speaker_map.get(speaker_id, "")
 
-            if speaker_name:
-                lines.append(f"**[{timestamp}] {speaker_name}:** {text}")
+            if speaker:
+                lines.append(f"**[{timestamp}] {speaker}:** {text}")
             else:
                 lines.append(f"**[{timestamp}]** {text}")
 

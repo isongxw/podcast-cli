@@ -62,7 +62,8 @@ class LLMStructurer:
 4. **提升可读性**：仅在必要处添加适当的标点符号，保持原有的段落结构，不要重新组织内容
 5. **合理分段**：仅在有明显话题转换或自然停顿处才增加小标题，**不要过度细分**，每个段落应保持较大的内容块（建议至少300-500字）
 6. **识别并修正专业术语**（根据内容领域）
-7. 生成结构化的Markdown文档
+7. **保留说话人信息**：如果转录文本中包含说话人标签（如 [SPEAKER_00]），请在输出中保留这些标签，以便区分不同说话人
+8. 生成结构化的Markdown文档
 
 ## 输出格式要求
 
@@ -76,7 +77,7 @@ class LLMStructurer:
     "sections": [
         {
             "heading": "章节标题",
-            "content": "该章节的完整内容（保持原意，仅修正错别字和标点）"
+            "content": "该章节的完整内容（保持原意，仅修正错别字和标点，保留说话人标签如 [SPEAKER_00]）"
         }
     ]
 }
@@ -88,10 +89,11 @@ class LLMStructurer:
 2. **全文总结**：full_summary 字段必须包含500-800字的详细总结，概括播客的主要内容和观点
 3. **严禁改写原文**：保持原始转录文本的完整性，**禁止总结、删减、扩写或重新表述**，仅修正明显的错别字和增加标点符号，进行文章分段提升可读性
 4. **保持核心内容**：保留原文的细节和具体内容
-5. **小标题精简**：小标题2-5个字，准确概括段落内容，**仅在必要的话题转换处添加**，避免过度细分
-6. **段落长度**：每个 section 的内容应保持较大块，**至少300-500字**，不要频繁分段
-7. **JSON格式**：确保输出严格为有效JSON格式
-8. **不要输出markdown代码块**，直接输出JSON字符串
+5. **保留说话人标签**：如果输入文本包含 [SPEAKER_XX] 格式的说话人标签，请在输出中保留这些标签
+6. **小标题精简**：小标题2-5个字，准确概括段落内容，**仅在必要的话题转换处添加**，避免过度细分
+7. **段落长度**：每个 section 的内容应保持较大块，**至少300-500字**，不要频繁分段
+8. **JSON格式**：确保输出严格为有效JSON格式
+9. **不要输出markdown代码块**，直接输出JSON字符串
 """
 
     def __init__(self):
@@ -143,7 +145,9 @@ class LLMStructurer:
 
             # 使用 Live 组件来正确显示流式内容
             with (
-                Live(Text("", style="dim"), console=console, refresh_per_second=10) as live,
+                Live(
+                    Text("", style="dim"), console=console, refresh_per_second=10
+                ) as live,
                 requests.post(
                     f"{self.openai_config.base_url}/chat/completions",
                     headers=headers,
@@ -174,7 +178,11 @@ class LLMStructurer:
 
                                 # 只保留最近的20个字符用于显示
                                 current_text = "".join(full_response)
-                                display_text = current_text[-20:] if len(current_text) > 20 else current_text
+                                display_text = (
+                                    current_text[-20:]
+                                    if len(current_text) > 20
+                                    else current_text
+                                )
                                 live.update(Text(display_text, style="dim"))
                         except (json.JSONDecodeError, KeyError):
                             continue
@@ -276,7 +284,9 @@ class LLMStructurer:
             lines.append("")
             lines.append("| 原文 | 修正后 |")
             lines.append("|------|--------|")
-            for original, corrected in parsed.get("terminology_corrections", {}).items():
+            for original, corrected in parsed.get(
+                "terminology_corrections", {}
+            ).items():
                 lines.append(f"| {original} | {corrected} |")
             lines.append("")
 
@@ -387,7 +397,9 @@ class LLMStructurer:
             full_summary = parsed.get("full_summary", "")
 
             for section in parsed.get("sections", []):
-                section["content"] = re.sub(r"^\s*\d+\.\s*", "", section.get("content", ""))
+                section["content"] = re.sub(
+                    r"^\s*\d+\.\s*", "", section.get("content", "")
+                )
                 all_sections.append(section)
 
             terminology_corrections.update(parsed.get("terminology_corrections", {}))
@@ -398,7 +410,9 @@ class LLMStructurer:
         result.sections = all_sections
         result.terminology_corrections = terminology_corrections
 
-        result.structured_markdown = self._generate_markdown(result.model_dump(), metadata, transcript)
+        result.structured_markdown = self._generate_markdown(
+            result.model_dump(), metadata, transcript
+        )
 
         console.print("[green]LLM结构化处理完成[/green]")
 

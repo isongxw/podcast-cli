@@ -566,7 +566,6 @@ def _execute_pipeline(
             model_size=config.whisper.model,
             device=config.whisper.device,
             language=config.whisper.language,
-            initial_prompt=config.whisper.initial_prompt,
         )
 
         if not transcriber.load_model():
@@ -586,6 +585,7 @@ def _execute_pipeline(
             title=episode_title,
             podcast=podcast.title if podcast else "未知播客",
             audio_source=str(downloaded_file),
+            speakers=result.speakers,
         )
         console.print(f"[green]转录完成: {md_file}[/green]")
 
@@ -614,8 +614,10 @@ def _execute_pipeline(
         )
 
         structurer = LLMStructurer()
+        # 使用带说话人标注的转录文本
+        transcript_with_speakers = transcript_result.get_transcript_with_speakers()
         structured_result = structurer.structure_transcript(
-            transcript_result.transcript, metadata
+            transcript_with_speakers, metadata
         )
 
         if structured_result:
@@ -655,7 +657,6 @@ def _do_transcribe(audio_source, title, podcast=None):
         model_size=config.whisper.model,
         device=config.whisper.device,
         language=config.whisper.language,
-        initial_prompt=config.whisper.initial_prompt,
     )
 
     if not transcriber.load_model():
@@ -674,6 +675,7 @@ def _do_transcribe(audio_source, title, podcast=None):
         title=title,
         podcast=podcast or "未知播客",
         audio_source=str(audio_source),
+        speakers=result.speakers,
     )
 
     console.print("\n[green]转录完成！[/green]")
@@ -697,7 +699,6 @@ def _do_struct(audio_source, episode, podcast, feed_url):
         model_size=config.whisper.model,
         device=config.whisper.device,
         language=config.whisper.language,
-        initial_prompt=config.whisper.initial_prompt,
     )
 
     if not transcriber.load_model():
@@ -721,7 +722,11 @@ def _do_struct(audio_source, episode, podcast, feed_url):
     )
 
     structurer = LLMStructurer()
-    structured_result = structurer.structure_transcript(result.transcript, metadata)
+    # 使用带说话人标注的转录文本
+    transcript_with_speakers = result.get_transcript_with_speakers()
+    structured_result = structurer.structure_transcript(
+        transcript_with_speakers, metadata
+    )
 
     if structured_result:
         md_file = structurer.save_result(structured_result, config.output.dir)

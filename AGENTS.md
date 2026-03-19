@@ -33,6 +33,63 @@ pytest -v                          # Verbose output
 pytest --cov=src --cov-report=term-missing  # With coverage
 ```
 
+## Lint/Format Commands
+
+```bash
+ruff check src/ --fix   # Lint with ruff (recommended)
+ruff format src/        # Format with ruff
+mypy src/               # Type check
+```
+
+## Development Workflow
+
+```bash
+# Install with dev dependencies
+uv pip install -e ".[dev]"
+
+# Run a single test with verbose output
+pytest tests/unit/test_config.py::test_load_config -v
+
+# Run tests with coverage
+pytest --cov=src --cov-report=term-missing
+```
+
+## Project Structure
+
+```
+src/
+├── cli.py              # CLI entry point (Click)
+├── config/             # Configuration (YAML, Pydantic)
+│   ├── __init__.py
+│   └── schema.py
+├── core/               # Core modules
+│   ├── itunes_search.py
+│   ├── rss_parser.py
+│   ├── downloader.py
+│   ├── transcriber.py
+│   └── markdown.py
+└── utils/              # Utilities
+```
+
+## Configuration
+
+- Config stored in `~/.podcli/config.yaml`
+- Use `pydantic-settings` for config management
+- Use `yaml.safe_load()` and `yaml.dump()` for YAML I/O
+- **IMPORTANT: When modifying config schema in `src/config/schema.py`, also update `_get_default_config()` in `src/config/__init__.py` to ensure YAML config file stays in sync**
+
+## Key Dependencies
+
+- `click` - CLI framework
+- `rich` - Terminal formatting
+- `requests`/`aiohttp` - HTTP requests
+- `feedparser` - RSS parsing
+- `pydub` - Audio processing
+- `torch`/`transformers` - ML backend
+- `qwen-asr` - Speech recognition
+- `loguru` - Logging
+- `pydantic`/`pydantic-settings` - Config validation
+
 ## Code Style Guidelines
 
 ### Imports Order
@@ -55,6 +112,7 @@ pytest --cov=src --cov-report=term-missing  # With coverage
 - Quotes: double quotes for strings, single for dict keys
 - Use Chinese docstrings for modules/functions
 - Prefer type hints for new code
+- Use `async`/`await` for I/O-bound operations (HTTP requests, file I/O)
 
 ### Error Handling
 
@@ -70,21 +128,30 @@ except SpecificException as e:
 - Catch specific exceptions, not bare `except:`
 - Print error messages in Chinese
 
-## Project Structure
+### Logging Pattern
 
+```python
+from loguru import logger
+
+logger.info("正在搜索播客: {query}", query=search_term)
+logger.debug("API响应: {response}", response=result)
+logger.warning("音频文件不存在: {path}", path=audio_path)
+logger.error("下载失败: {error}", error=str(e))
 ```
-src/
-├── cli.py              # CLI entry point (Click)
-├── config/             # Configuration (YAML, Pydantic)
-│   ├── __init__.py
-│   └── schema.py
-├── core/               # Core modules
-│   ├── itunes_search.py
-│   ├── rss_parser.py
-│   ├── downloader.py
-│   ├── transcriber.py
-│   └── markdown.py
-└── utils/              # Utilities
+
+### Async Operations
+
+```python
+import asyncio
+from aiohttp import ClientSession
+
+async def fetch_data(url: str) -> dict:
+    async with ClientSession() as session:
+        async with session.get(url) as response:
+            return await response.json()
+
+# Run async in CLI
+result = asyncio.run(async_operation())
 ```
 
 ## CLI Development
@@ -92,38 +159,6 @@ src/
 - Use `click` for command-line interface
 - Use `rich` for beautiful terminal output (tables, progress bars, panels)
 - Entry point: `podcli` command defined in `pyproject.toml`
-
-## Configuration
-
-- Config stored in `~/.podcli/config.yaml`
-- Use `pydantic-settings` for config management
-- Use `yaml.safe_load()` and `yaml.dump()` for YAML I/O
-- OpenAI API configuration: `base_url`, `api_key`, `model`, etc.
-- LLM structured markdown: `structured.enable`, `structured.segment_length`, etc.
-- Whisper parallel transcription: `whisper.parallel_workers` (default: 1, max: 4)
-
-## Key Dependencies
-
-- `click` - CLI framework
-- `rich` - Terminal formatting
-- `requests`/`aiohttp` - HTTP requests
-- `feedparser` - RSS parsing
-- `pydub` - Audio processing
-- `torch`/`transformers` - ML backend
-- `qwen-asr` - Speech recognition
-- `loguru` - Logging
-- `pydantic`/`pydantic-settings` - Config validation
-
-## Lint/Format Commands
-
-```bash
-black src/              # Format code
-isort src/              # Sort imports
-flake8 src/             # Lint
-mypy src/               # Type check
-ruff check src/ --fix   # Lint with ruff
-ruff format src/        # Format with ruff
-```
 
 ## Pre-commit Checklist
 

@@ -19,6 +19,7 @@ from pathlib import Path
 # 参考: https://github.com/m-bain/whisperX/issues/1525
 os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
 
+import nltk
 import torch
 import whisperx
 from pydantic import BaseModel, Field
@@ -29,6 +30,17 @@ from config import config
 from utils import format_duration
 
 console = Console()
+
+# 下载必要的 NLTK 数据
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    console.print("[cyan]正在下载 NLTK 数据...[/cyan]")
+    try:
+        nltk.download("punkt", quiet=True)
+        console.print("[green]NLTK 数据下载完成[/green]")
+    except Exception as e:
+        console.print(f"[yellow]NLTK 数据下载失败: {e}[/yellow]")
 
 
 class TranscriptionResult(BaseModel):
@@ -43,6 +55,23 @@ class TranscriptionResult(BaseModel):
     speakers: list[dict] = Field(default_factory=list)
     word_segments: list[dict] = Field(default_factory=list)
 
+    def get_transcript_with_speakers(self) -> str:
+        """获取带说话人标注的转录文本"""
+        if not self.segments:
+            return self.transcript
+
+        lines = []
+        for segment in self.segments:
+            text = segment.get("text", "").strip()
+            speaker = segment.get("speaker", "")
+
+            if speaker and text:
+                lines.append(f"[{speaker}] {text}")
+            elif text:
+                lines.append(text)
+
+        return "\n".join(lines)
+
 
 class ModelCacheManager:
     """模型缓存管理器"""
@@ -56,7 +85,9 @@ class ModelCacheManager:
 
     def get_cache_size(self) -> str:
         """获取缓存大小"""
-        total_size = sum(f.stat().st_size for f in self.cache_dir.rglob("*") if f.is_file())
+        total_size = sum(
+            f.stat().st_size for f in self.cache_dir.rglob("*") if f.is_file()
+        )
         for unit in ["B", "KB", "MB", "GB"]:
             if total_size < 1024:
                 return f"{total_size:.1f} {unit}"
@@ -98,8 +129,6 @@ class WhisperXTranscriber:
         model_size: str | None = None,
         device: str | None = None,
         language: str | None = None,
-        initial_prompt: str | None = None,
-        chunk_length: int | None = None,
         compute_type: str | None = None,
         batch_size: int | None = None,
         enable_alignment: bool | None = None,
@@ -112,11 +141,13 @@ class WhisperXTranscriber:
         self.model_size = model_size or config.whisper.model
         self.device = device or config.whisper.device
         self.language = language or config.whisper.language
-        self.initial_prompt = initial_prompt or config.whisper.initial_prompt
-        self.chunk_length = chunk_length or config.whisper.chunk_length
         self.compute_type = compute_type or config.whisper.compute_type
         self.batch_size = batch_size or config.whisper.batch_size
-        self.enable_alignment = enable_alignment if enable_alignment is not None else config.whisper.enable_alignment
+        self.enable_alignment = (
+            enable_alignment
+            if enable_alignment is not None
+            else config.whisper.enable_alignment
+        )
         self.align_model = align_model or config.whisper.align_model
         self.diarize = diarize if diarize is not None else config.whisper.diarize
         self.hf_token = hf_token or config.whisper.hf_token
@@ -190,13 +221,19 @@ class WhisperXTranscriber:
         """
         try:
             if not self.hf_token:
-                console.print("[yellow]警告: 未设置HuggingFace Token，说话人分离功能不可用[/yellow]")
-                console.print("[yellow]请在配置中设置 hf_token 或环境变量 HUGGINGFACE_TOKEN[/yellow]")
+                console.print(
+                    "[yellow]警告: 未设置HuggingFace Token，说话人分离功能不可用[/yellow]"
+                )
+                console.print(
+                    "[yellow]请在配置中设置 hf_token 或环境变量 HUGGINGFACE_TOKEN[/yellow]"
+                )
                 return False
 
             console.print("[cyan]加载说话人分离模型...[/cyan]")
 
-            self.diarize_model = whisperx.DiarizationPipeline(
+            from whisperx.diarize import DiarizationPipeline
+
+            self.diarize_model = DiarizationPipeline(
                 use_auth_token=self.hf_token,
                 device=self.device,
             )
@@ -205,7 +242,21 @@ class WhisperXTranscriber:
             return True
 
         except Exception as e:
+            error_msg = str(e)
             console.print(f"[yellow]加载说话人分离模型失败: {e}[/yellow]")
+
+            if "locate the file on the Hub" in error_msg or "cannot find" in error_msg:
+                console.print("\n[red]模型下载失败，可能原因:[/red]")
+                console.print("  1. HuggingFace 无法访问（国内网络限制）")
+                console.print("  2. 未接受模型用户协议")
+                console.print("\n[cyan]解决方案:[/cyan]")
+                console.print("  1. 设置镜像: export HF_ENDPOINT=https://hf-mirror.com")
+                console.print("  2. 手动下载模型后放到 ~/.cache/huggingface/hub/")
+                console.print(
+                    "  3. 禁用说话人分离: podcli config --set whisper.diarize=false"
+                )
+                console.print("\n[yellow]本次转录将跳过说话人分离[/yellow]")
+
             return False
 
     def _get_audio_duration(self, audio_file: Path) -> float:
@@ -243,7 +294,9 @@ class WhisperXTranscriber:
 
             duration = self._get_audio_duration(audio_path)
 
-            console.print(f"[cyan]开始转录: {audio_path.name} (时长: {format_duration(duration)})[/cyan]")
+            console.print(
+                f"[cyan]开始转录: {audio_path.name} (时长: {format_duration(duration)})[/cyan]"
+            )
 
             # 1. 加载音频
             console.print("[cyan]加载音频...[/cyan]")
@@ -304,7 +357,10 @@ class WhisperXTranscriber:
                         console.print(f"[yellow]说话人分离失败: {e}[/yellow]")
 
             # 构建转录文本
-            transcript = " ".join(segment.get("text", "").strip() for segment in result.get("segments", [])).strip()
+            transcript = " ".join(
+                segment.get("text", "").strip()
+                for segment in result.get("segments", [])
+            ).strip()
 
             console.print(f"[cyan]转录文本长度: {len(transcript)} 字符[/cyan]")
 
@@ -333,7 +389,9 @@ class WhisperXTranscriber:
 
         except Exception as e:
             console.print(f"[red]音频转录失败: {e}[/red]")
-            return TranscriptionResult(audio_file=str(audio_file), transcript="", error=str(e))
+            return TranscriptionResult(
+                audio_file=str(audio_file), transcript="", error=str(e)
+            )
 
         finally:
             # 清理GPU内存
@@ -394,7 +452,6 @@ def transcribe_audio(
         model_size=config.whisper.model,
         device=config.whisper.device,
         language=config.whisper.language,
-        initial_prompt=config.whisper.initial_prompt,
         batch_size=config.whisper.batch_size,
         enable_alignment=config.whisper.enable_alignment,
         align_model=config.whisper.align_model,
@@ -420,6 +477,7 @@ def transcribe_audio(
         title=title or audio_file.stem,
         podcast=podcast or "未知播客",
         audio_source=audio_source,
+        speakers=result.speakers,
     )
 
     console.print("[green]转录完成！[/green]")

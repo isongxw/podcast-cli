@@ -8,16 +8,17 @@
 import os
 from pathlib import Path
 from typing import Any
+
 import yaml
 
 from .schema import (
-    PodcliConfig,
-    WhisperConfig,
     DownloadConfig,
-    OutputConfig,
-    SearchConfig,
     OpenAIConfig,
+    OutputConfig,
+    PodcliConfig,
+    SearchConfig,
     StructuredMarkdownConfig,
+    WhisperConfig,
     WorkflowConfig,
 )
 
@@ -55,7 +56,7 @@ class Config:
             return default_config
 
         try:
-            with open(self.config_file, "r", encoding="utf-8") as f:
+            with open(self.config_file, encoding="utf-8") as f:
                 user_config = yaml.safe_load(f) or {}
 
             # 合并配置：默认配置 + 用户配置
@@ -77,10 +78,7 @@ class Config:
                 "model": "base",
                 "device": "cpu",
                 "language": "auto",
-                "compute_type": "float32",
-                "chunk_length": 60,
-                "initial_prompt": "",
-                "parallel_workers": 1,
+                "compute_type": "float16",
                 "batch_size": 16,
                 "enable_alignment": True,
                 "align_model": "",
